@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from pprint import pprint
 from django.core import serializers
 import json
+from django.contrib import messages
  
 # stripe用シークレットキー読み込み
 stripe.api_key = settings.STRIPE_API_SECRET_KEY
@@ -86,10 +87,12 @@ class PayWithStripe(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         # プロフィールが埋まっているかどうか確認
         if not check_profile_filled(request.user.profile):
+            messages.error(self.request, '配送のためのプロフィールを埋めてください')
             return redirect('/profile/')
  
         cart = request.session.get('cart', None)
         if cart is None or len(cart) == 0:
+            messages.error(self.request, 'カートが空です')
             return redirect('/')
  
         items = []  # Orderモデル用に追記
@@ -117,7 +120,7 @@ class PayWithStripe(LoginRequiredMixin, View):
             item.save()
  
         # 仮注文を作成（is_confirmed=Flase)
-        Order.objects.create(
+        order = Order.objects.create(
             user=request.user,
             uid=request.user.pk,
             items=json.dumps(items),
@@ -131,7 +134,7 @@ class PayWithStripe(LoginRequiredMixin, View):
             payment_method_types=['card'],
             line_items=line_items,
             mode='payment',
-            success_url=f'{settings.MY_URL}/pay/success/',
-            cancel_url=f'{settings.MY_URL}/pay/cancel/',
+            success_url=f'{settings.MY_URL}/pay/success/?order_id={order.pk}',
+            cancel_url=f'{settings.MY_URL}/pay/cancel/?order_id={order.pk}',
         )
         return redirect(checkout_session.url)
